@@ -1,2 +1,4 @@
 # Pat-a-Mat
-Pat&amp;Mat's Capstone Design Project
+캡스톤디자인종합1 프로젝트 저장소입니다.
+
+주제 : 
