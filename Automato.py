@@ -1,39 +1,39 @@
 class Connection:
     def __init__(self):
-        self.fruit_Info = {}
+        self.fruit_Name = []
         self.order_List = []
 
     def select(self):
-        conn = pymysql.connect(host='localhost', user='root', password='automato', db='capstone', charset='utf8')
+        conn = pymysql.connect(host='localhost', user='root', password='automato', db='capstone', charset='utf8') 
 
         cursor = conn.cursor(pymysql.cursors.DictCursor)
 
-        sql_fruit = "SELECT * FROM `Fruit`;"
+        sql_fruit = "SELECT * FROM `Fruit`;" 
         sql_list = "SELECT * FROM `List`;"
 
-        cursor.execute(sql_fruit)
-        res = cursor.fetchall()
+        cursor.execute(sql_fruit) 
+        res = cursor.fetchall() 
 
         for data in res:
             tmp = list(data.values())
-            self.fruit_Info[str(tmp[0])] = tmp[1]
-
+            self.fruit_Name.append(tmp[0])
+    
         cursor.execute(sql_list)
         res = cursor.fetchall()
 
         for data in res:
             self.order_List.append(data)
 
-        conn.commit()
+        conn.commit() 
         conn.close()
-
-    def getFruitInfo(self):
-        return self.fruit_Info
+   
+    def getFruitName(self):
+        return self.fruit_Name
     
     def getOrderList(self):
         return self.order_List
-    
-    
+
+
 class OrderManagement():
     def __init__(self, order_List):
         self.order_List = order_List
@@ -49,7 +49,7 @@ class OrderManagement():
         if len(self.sleep_Queue) == 0:
             print('No more order')
             return
-
+        
         if port == 0:
             for i in range(num):
                 #del(self.sleep_Queue[0]['OrderNumber'])
@@ -60,6 +60,7 @@ class OrderManagement():
             #del(self.sleep_Queue[0]['OrderNumber'])
             self.run_Queue.insert(port-1, self.sleep_Queue[0])
             self.sleep_Queue = self.sleep_Queue[1:]
+
     def checkPackage(self, port):
         self.change[port] = True
 
@@ -101,13 +102,27 @@ class Status():
 
 
 class Distribution():
-    def __init__(self, fruit_Detect, run_Queue):
+    def __init__(self, fruit_Detect, run_Queue, prior):
         self.fruit_Detect = fruit_Detect
         self.run_Queue = run_Queue
-        self.prior= {1 : 0, 2 : 0, 3 : 0}
+        self.prior = prior
+        self.check_In = []
+        self.consider_Priority = {}
+        self.sorted_dict = {}
+        self.cnt = 0
+        self.val = 0
+        self.ke = 0
+        self.tmp1 = 0
+        self.tmp2 = 0
+        self.packaging = 0
 
-    def plusPrior(self, port):
-        self.prior[port-1] += 1
+    def plusPrior(self, ke):
+        for i in range(1, 4):
+            if i == ke:
+                self.prior[i] = 0
+            else:
+                self.prior[i] += 1
+        print(self.prior)
 
     def scheduling(self):
         # Find order that contain fruit_Detect
@@ -115,23 +130,71 @@ class Distribution():
         # In case, use Aging(priority)
         for i in range(3):
             if self.run_Queue[i][str(self.fruit_Detect)] > 0:
-                self.check.append(i)
+                self.check_In.append(i)
 
-        for ele in check:
-            if self.prior[ele] > 3:
-                self.consider_Priority.append(ele)
+        for check in self.check_In:
+            if self.prior[check+1] > 3:
+                self.consider_Priority[check+1] = self.prior[check+1]
 
-        if len(consider_Priority) > 1:
+        if len(self.consider_Priority) > 1:
+            self.sorted_dict = sorted(self.consider_Priority.items(), key = lambda item:item[1], reverse=True)
+            self.cnt = len(self.sorted_dict) - 1
+            for i in range(len(self.sorted_dict)):
+                if i == 0:
+                    self.val = self.sorted_dict[i][1]
+                    continue
+                if self.val > self.sorted_dict[i][1]:
+                    self.cnt = i - 1
+                    break
 
+            if self.cnt == 0:
+                self.ke = self.sorted_dict[0][0]
+                self.plusPrior(self.ke)
+                self.run_Queue[self.ke-1][str(self.fruit_Detect)] -= 1
 
+                return self.ke
 
-        elif len(consider_Priority) == 1:
-            self.prior[consider_Priority[0]] = 0
-            self.run_Queue[consider_Priority[0]+1][str(self.fruit_Detect)] -= 1
+            self.tmp1 = self.run_Queue[self.sorted_dict[0][0]-1]['OrderNumber']
+            for i in range(1,self.cnt+1):
+                self.tmp2 = self.run_Queue[self.sorted_dict[i][0]-1]['OrderNumber']
+                if self.tmp1 > self.tmp2:
+                    self.tmp1 = self.tmp2
 
-            return consider_Priority[0]+1
+            for i in range(3):
+                if self.tmp1 == self.run_Queue[self.sorted_dict[i][0]-1]['OrderNumber']:
+                    self.ke = self.sorted_dict[i][0]
+                    break
+
+            self.plusPrior(self.ke)
+            self.run_Queue[self.ke-1][str(self.fruit_Detect)] -= 1
+
+            return self.ke
+
+        elif len(self.consider_Priority) == 1:
+            self.ke = list(self.consider_Priority.keys())[0]
+            self.plusPrior(self.ke)
+            self.run_Queue[self.ke-1][str(self.fruit_Detect)] -= 1
+
+            return self.ke
 
         else:
+            for idx, check in enumerate(self.check_In):
+                if idx == 0:
+                    self.tmp1 = self.run_Queue[check]['OrderNumber']
+                    continue
+                self.tmp2 = self.run_Queue[check]['OrderNumber']
+                if self.tmp1 > self.tmp2:
+                    self.tmp1 = self.tmp2
+
+            for check in self.check_In:
+                if self.tmp1 == self.run_Queue[check]['OrderNumber']:
+                    self.ke = check+1
+                    break
+
+            self.plusPrior(self.ke)
+            self.run_Queue[self.ke-1][str(self.fruit_Detect)] -= 1
+
+            return self.ke
 
     def decidePort(self, is_Fresh, in_Order):
         if is_Fresh == False:
@@ -139,13 +202,24 @@ class Distribution():
         elif is_Fresh == True and in_Order == False:
             return 5
         elif is_Fresh == True and in_Order == True:
-            port, run_Queue = scheduling()
-            return port
+            return self.scheduling()
+
+    def finishPackage(self, port):
+        for col in Distribution.getFruitName():
+            if self.run_Queue[port-1][col] == 0:
+                self.packaging += 1
+        
+        if self.packaging == 3:
+            print('Port', self.port, 'Done')
+            Distribution.RunQueue(self, 0, port)
+            self.run_Queue = Distribution.getRunQueue()
 
     def getRunQueue(self):
         return self.run_Queue
 
-    
+    def getPrior(self):
+        return self.prior
+
 import pymysql
 
 def main():
@@ -162,24 +236,40 @@ def main():
     run_Queue = orde.getRunQueue()
     print(run_Queue)
 
-    #while (len(run_Queue) != 0) {
+    prior= {1 : 0, 2 : 0, 3 : 0}
+
+    run_Queue[0]['Apple'] = 1
+    run_Queue[0]['Orange'] = 0
+
+    cnt = 6
+    while (cnt != 0):
 
     # Run Light-YOLOv4
     #mod = Model()
     #fruit_Detect = result()
-    fruit_Detect = 'rotten'
+        fruit_Detect = 'Apple'
 
     # Check Object's Status
-    st = Status(fruit_Detect, fruit_Name, run_Queue)
-    st.checkFreshness()
-    st.checkOrderList()
-    is_Fresh, in_Order = st.getStatus()
-    run_Queue = st.getRunQueue()
+        st = Status(fruit_Detect, fruit_Name, run_Queue)
+        st.checkFreshness()
+        st.checkOrderList()
+        is_Fresh, in_Order = st.getStatus()
 
     # Consider Priority and Decide Port Number
-    dis = Distribution(fruit_Detect, run_Queue)
-    port = dis.decidePort(is_Fresh, in_Order)
-    print(port)
+        dis = Distribution(fruit_Detect, run_Queue, prior)
+        port = dis.decidePort(is_Fresh, in_Order)
+        prior = dis.getPrior()
+        dis.finishPackage(port)
+        run_Queue = dis.getRunQueue()
+        print(run_Queue)
+        print(port)
+
+        cnt -= 1
+
+    #[{'Apple': 3, 'Banana': 0, 'Orange': 2, 'OrderNumber': 1}, {'Apple': 5, 'Banana': 3, 'Orange': 0, 'OrderNumber': 2}, {'Apple': 2, 'Banana': 4, 'Orange': 4, 'OrderNumber': 3}]
+
 
 if __name__ == '__main__':
     main()
+
+
